@@ -90,14 +90,14 @@ contract Lottery is VRFConsumerBaseV2, AutomationCompatibleInterface {
      * they look for the 'upKeepNeeded' to return true.
      * The following should be true in order to return true:
      * 1. Our time interval should have passed
-     * 2. THe lottery should have at least 1 player, and have some ETH
+     * 2. The lottery should have at least 1 player, and have some ETH
      * 3. Our subscription is funded with LINK
      * 4. The lottery should be in an 'open' state
      */
 
     function checkUpkeep(
         bytes memory /* checkData */
-    ) public override returns (bool upKeepNeeded, bytes memory /*performData*/) {
+    ) public view override returns (bool upKeepNeeded, bytes memory /*performData*/) {
         bool isOpen = (LotteryState.OPEN == s_lotteryState);
         bool timePassed = ((block.timestamp - s_lastTimeStamp) > i_interval);
         bool hasPlayers = (s_players.length > 0);

@@ -5,14 +5,16 @@ const { assert, expect } = require("chai")
 !developmentChains.includes(network.name)
     ? describe.skip
     : describe("Lottery Unit Tests", function () {
-          let lottery, vrfCoordinatorV2Mock
+          let lottery, vrfCoordinatorV2Mock, lotteryEntranceFee, deployer, interval
           const chainId = network.config.chainId
 
           beforeEach(async function () {
-              const { deployer } = await getNamedAccounts()
+              deployer = (await getNamedAccounts()).deployer
               await deployments.fixture("all")
-              lottery = await ethers.getContract("Lottery", deployer)
               vrfCoordinatorV2Mock = ethers.getContract("VRFCoordinatorV2Mock", deployer)
+              lottery = await ethers.getContract("Lottery", deployer)
+              lotteryEntranceFee = await lottery.getEntranceFee()
+              interval = await lottery.getInterval()
           })
 
           describe("constructor", function () {
@@ -21,7 +23,6 @@ const { assert, expect } = require("chai")
 
                   // check the state of the lotter, should be Open on deployment
                   const lotteryState = await lottery.getLotteryState()
-                  const interval = await lottery.getInterval()
                   assert.equal(lotteryState.toString(), "0")
                   assert.equal(interval.toString(), networkConfig[chainId]["interval"])
               })
@@ -32,6 +33,44 @@ const { assert, expect } = require("chai")
                   await expect(lottery.enterLottery()).to.be.reverted.revertedWith(
                       "Lottery__NotEnoughETHEntered"
                   )
+              })
+
+              it("records players when they enter", async function () {
+                  await lottery.enterLottery({ value: lotteryEntranceFee })
+                  const playerFromContract = await lottery.getPlayer(0)
+                  assert.equal(playerFromContract, deployer)
+              })
+
+              it("emits event on enter", async function () {
+                  const tx = await lottery.enterLottery({ value: lotteryEntranceFee })
+                  const receipt = await tx.wait()
+                  const logs = receipt.logs
+                  // await expect(tx).to.emit(lottery, "LotteryEnter")
+                  assert.equal(logs[0].args[0], deployer)
+              })
+
+              it("doesn't allow entrance when lottery is calculating", async function () {
+                  await lottery.enterLottery({ value: lotteryEntranceFee })
+                  await network.provider.send("evm_increaseTime", [Number(interval.toString()) + 1])
+                  await network.provider.send("evm_mine", [])
+
+                  // We pretend to be a Chainlink Keeper
+                  await lottery.performUpkeep("0x")
+
+                  await expect(
+                      lottery.enterLottery({ value: lotteryEntranceFee })
+                  ).to.be.revertedWith("Lottery__NotOpen")
+              })
+          })
+
+          describe("checkUpkeep", function () {
+              it("returns false if no one have sent any ETH", async function () {
+                  // increase time past the set interval
+                  await network.provider.send("evm_increaseTime", [Number(interval.toString()) + 1])
+                  await network.provider.send("evm_mine", [])
+
+                  const [upkeepNeeded] = await lottery.checkUpkeep("0x")
+                  assert(!upkeepNeeded)
               })
           })
       })

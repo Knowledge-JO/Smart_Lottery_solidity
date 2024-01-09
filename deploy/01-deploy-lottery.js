@@ -8,11 +8,11 @@ module.exports = async function ({ getNamedAccounts, deployments }) {
     const { deployer } = await getNamedAccounts()
     const chainId = network.config.chainId
 
-    let vrfCoordinatorv2Address, subscriptionId
+    let vrfCoordinatorV2Mock, vrfCoordinatorv2Address, subscriptionId
 
     if (developmentChains.includes(network.name)) {
         console.log("Local network detected!!")
-        const vrfCoordinatorV2Mock = await ethers.getContract("VRFCoordinatorV2Mock")
+        vrfCoordinatorV2Mock = await ethers.getContract("VRFCoordinatorV2Mock")
         vrfCoordinatorv2Address = vrfCoordinatorV2Mock.target
 
         // create subscription
@@ -48,8 +48,11 @@ module.exports = async function ({ getNamedAccounts, deployments }) {
         logs: true,
         waitConfirmations: network.config.blockConfirmations || 1,
     })
-
     console.log(`lottery deployed at: ${lottery.address}`)
+
+    if (developmentChains.includes(network.name)) {
+        await vrfCoordinatorV2Mock.addConsumer(subscriptionId, lottery.address)
+    }
 
     if (!developmentChains.includes(network.name) && process.env.ETHERSCAN_API_KEY) {
         log("verifying...")
